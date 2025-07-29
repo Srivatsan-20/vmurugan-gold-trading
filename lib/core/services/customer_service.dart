@@ -1,9 +1,10 @@
-import 'dart:io';
 // import 'package:device_info_plus/device_info_plus.dart';
 // import 'package:geolocator/geolocator.dart';
 // import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
+import 'package:flutter/foundation.dart';
+import '../utils/platform_utils.dart';
 
 class CustomerService {
   static const String _customerPhoneKey = 'customer_phone';
@@ -11,16 +12,20 @@ class CustomerService {
   static const String _customerEmailKey = 'customer_email';
   static const String _customerRegisteredKey = 'customer_registered';
 
-  // Get device information for tracking (simplified for now)
+  // Get device information for tracking (web-compatible)
   static Future<Map<String, dynamic>> getDeviceInfo() async {
-    // Simplified device info - will be enhanced when device_info_plus is re-enabled
+    // Use the platform utility for web-compatible device info
+    final platformInfo = PlatformUtils.getPlatformInfo();
+
     Map<String, dynamic> deviceData = {
-      'platform': Platform.operatingSystem,
-      'device_id': 'temp_device_${DateTime.now().millisecondsSinceEpoch}',
-      'model': 'Unknown',
-      'brand': 'Unknown',
-      'version': 'Unknown',
+      'platform': PlatformUtils.platformName,
+      'device_id': PlatformUtils.generateDeviceId(),
+      'model': 'Unknown', // Will be enhanced with device_info_plus later
+      'brand': 'Unknown', // Will be enhanced with device_info_plus later
+      'version': 'Unknown', // Will be enhanced with device_info_plus later
       'timestamp': DateTime.now().toIso8601String(),
+      'user_agent': PlatformUtils.getUserAgent(),
+      ...platformInfo, // Spread all platform info
     };
 
     print('Device info collected: $deviceData');
@@ -58,7 +63,7 @@ class CustomerService {
       final prefs = await SharedPreferences.getInstance();
 
       // Get customer info from server
-      print('🔍 Fetching customer data from Firebase...');
+      print('🔍 Fetching customer data from backend API...');
       final result = await ApiService.getCustomerByPhone(phone);
 
       print('📊 Customer fetch result: $result');

@@ -2,10 +2,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'firebase_service.dart';
 import 'custom_server_service.dart';
+import 'backend_api_service.dart';
 
 class ApiService {
   // CONFIGURATION: Switch between Firebase and Custom Server
-  static const bool useFirebase = true; // Set to false to use custom server
+  static const bool useFirebase = false; // Set to false to use custom server
 
   // Firebase will be used by default, custom server when ready
   static const String mode = useFirebase ? 'Firebase' : 'Custom Server';
@@ -43,19 +44,19 @@ class ApiService {
         location: location,
       );
     } else {
-      return await CustomServerService.saveTransaction(
-        transactionId: transactionId,
-        customerPhone: customerPhone,
-        customerName: customerName,
+      // For backend API, we need to get customerId from phone
+      // For now, use phone as customerId (this should be improved)
+      return await BackendApiService.createTransaction(
+        customerId: customerPhone, // Using phone as customerId for now
         type: type,
         amount: amount,
         goldGrams: goldGrams,
         goldPricePerGram: goldPricePerGram,
         paymentMethod: paymentMethod,
-        status: status,
         gatewayTransactionId: gatewayTransactionId,
         deviceInfo: deviceInfo,
         location: location,
+        notes: 'Transaction for $customerName',
       );
     }
   }
@@ -107,10 +108,12 @@ class ApiService {
         deviceId: deviceId,
       );
     } else {
-      return await CustomServerService.saveCustomer(
+      // Use BackendApiService for registration
+      return await BackendApiService.registerCustomer(
         phone: phone,
-        name: name,
         email: email,
+        password: 'temp123', // Default password
+        name: name,
         address: address,
         panCard: panCard,
         deviceId: deviceId,
@@ -165,6 +168,25 @@ class ApiService {
     }
   }
 
+  // Smart router: Login customer
+  static Future<Map<String, dynamic>> loginCustomer({
+    required String phone,
+    required String password,
+  }) async {
+    print('ApiService: Routing to $mode for customer login');
+
+    if (useFirebase) {
+      // Firebase doesn't have password-based login, use phone lookup
+      return await FirebaseService.getCustomerByPhone(phone);
+    } else {
+      // Use backend API login
+      return await BackendApiService.loginCustomer(
+        phone: phone,
+        password: password,
+      );
+    }
+  }
+
   // Smart router: Get customer by phone
   static Future<Map<String, dynamic>> getCustomerByPhone(String phone) async {
     print('ApiService: Routing to $mode for customer lookup');
@@ -172,11 +194,12 @@ class ApiService {
     if (useFirebase) {
       return await FirebaseService.getCustomerByPhone(phone);
     } else {
-      // For custom server, implement customer lookup
+      // For backend API, we need to use login instead of lookup
+      // This method should not be used with backend API
       return {
         'success': false,
         'customer': null,
-        'message': 'Custom server customer lookup not implemented',
+        'message': 'Use loginCustomer method for backend API authentication',
       };
     }
   }
@@ -191,7 +214,7 @@ class ApiService {
     if (useFirebase) {
       await FirebaseService.logAnalytics(event: event, data: data);
     } else {
-      await CustomServerService.logAnalytics(event: event, data: data);
+      await BackendApiService.logAnalytics(event: event, data: data);
     }
   }
 
@@ -232,7 +255,8 @@ class ApiService {
     if (useFirebase) {
       return await FirebaseService.getDashboardData(adminToken: adminToken);
     } else {
-      return await CustomServerService.getDashboardData(adminToken: adminToken);
+      // Backend API doesn't need admin token for dashboard (uses JWT auth)
+      return await BackendApiService.getAdminDashboard();
     }
   }
 }

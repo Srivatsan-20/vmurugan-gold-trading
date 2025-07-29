@@ -1,6 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/gold_price_model.dart';
-import 'mjdta_price_service.dart';
 
 class GoldPriceService {
   static final GoldPriceService _instance = GoldPriceService._internal();
@@ -15,12 +16,9 @@ class GoldPriceService {
   GoldPriceModel? _currentPrice;
   Timer? _priceUpdateTimer;
 
-  // MJDTA service - our only price source
-  final MjdtaPriceService _mjdtaService = MjdtaPriceService();
-
-  // Track MJDTA availability
-  bool _isMjdtaAvailable = false;
-  DateTime? _lastMjdtaCheck;
+  // Backend API service - our primary price source
+  bool _isBackendAvailable = false;
+  DateTime? _lastBackendCheck;
 
   // Initialize the service
   void initialize() {
@@ -53,67 +51,67 @@ class GoldPriceService {
     });
   }
 
-  // Load initial price from MJDTA only
+  // Load initial price from backend API
   Future<void> _loadInitialPrice() async {
     try {
-      print('GoldPriceService: Loading initial price from MJDTA...');
+      print('GoldPriceService: Loading initial price from backend API...');
 
-      final mjdtaPrice = await _mjdtaService.fetchGoldPrice();
-      if (mjdtaPrice != null) {
-        print('GoldPriceService: Successfully loaded price from MJDTA: ${mjdtaPrice.formattedPrice}');
-        _currentPrice = mjdtaPrice;
-        _isMjdtaAvailable = true;
-        _lastMjdtaCheck = DateTime.now();
+      final backendPrice = await _fetchGoldPriceFromBackend();
+      if (backendPrice != null) {
+        print('GoldPriceService: Successfully loaded price from backend: ${backendPrice.formattedPrice}');
+        _currentPrice = backendPrice;
+        _isBackendAvailable = true;
+        _lastBackendCheck = DateTime.now();
         _priceController.add(_currentPrice);
       } else {
-        print('GoldPriceService: MJDTA unavailable - no price data available');
+        print('GoldPriceService: Backend unavailable - no price data available');
         _currentPrice = null;
-        _isMjdtaAvailable = false;
-        _lastMjdtaCheck = DateTime.now();
+        _isBackendAvailable = false;
+        _lastBackendCheck = DateTime.now();
         _priceController.add(null);
       }
     } catch (e) {
       print('GoldPriceService: Error loading initial price: $e');
       _currentPrice = null;
-      _isMjdtaAvailable = false;
-      _lastMjdtaCheck = DateTime.now();
+      _isBackendAvailable = false;
+      _lastBackendCheck = DateTime.now();
       _priceController.add(null);
     }
   }
 
 
 
-  // Update price from MJDTA only
+  // Update price from backend API
   Future<void> _updatePrice() async {
     try {
-      // Check if we should retry MJDTA (every 5 minutes if it was down)
-      final shouldRetryMjdta = !_isMjdtaAvailable &&
-          _lastMjdtaCheck != null &&
-          DateTime.now().difference(_lastMjdtaCheck!).inMinutes >= 5;
+      // Check if we should retry backend (every 5 minutes if it was down)
+      final shouldRetryBackend = !_isBackendAvailable &&
+          _lastBackendCheck != null &&
+          DateTime.now().difference(_lastBackendCheck!).inMinutes >= 5;
 
-      if (_isMjdtaAvailable || shouldRetryMjdta) {
-        print('GoldPriceService: Fetching updated price from MJDTA...');
+      if (_isBackendAvailable || shouldRetryBackend) {
+        print('GoldPriceService: Fetching updated price from backend API...');
 
-        final mjdtaPrice = await _mjdtaService.fetchGoldPrice();
-        if (mjdtaPrice != null) {
-          print('GoldPriceService: Successfully updated price from MJDTA: ${mjdtaPrice.formattedPrice}');
-          _currentPrice = mjdtaPrice;
-          _isMjdtaAvailable = true;
-          _lastMjdtaCheck = DateTime.now();
+        final backendPrice = await _fetchGoldPriceFromBackend();
+        if (backendPrice != null) {
+          print('GoldPriceService: Successfully updated price from backend: ${backendPrice.formattedPrice}');
+          _currentPrice = backendPrice;
+          _isBackendAvailable = true;
+          _lastBackendCheck = DateTime.now();
           _priceController.add(_currentPrice);
         } else {
-          print('GoldPriceService: MJDTA still unavailable');
+          print('GoldPriceService: Backend still unavailable');
           _currentPrice = null;
-          _isMjdtaAvailable = false;
-          _lastMjdtaCheck = DateTime.now();
+          _isBackendAvailable = false;
+          _lastBackendCheck = DateTime.now();
           _priceController.add(null);
         }
       }
     } catch (e) {
       print('GoldPriceService: Error updating price: $e');
       _currentPrice = null;
-      _isMjdtaAvailable = false;
-      _lastMjdtaCheck = DateTime.now();
+      _isBackendAvailable = false;
+      _lastBackendCheck = DateTime.now();
       _priceController.add(null);
     }
   }
@@ -126,37 +124,66 @@ class GoldPriceService {
     return _currentPrice;
   }
 
-  // Get MJDTA availability status
-  bool get isMjdtaAvailable => _isMjdtaAvailable;
+  // Get backend availability status
+  bool get isBackendAvailable => _isBackendAvailable;
 
   // Get price source description
   String get priceSource {
-    if (_isMjdtaAvailable) {
-      return 'MJDTA Live Data (Chennai) - 22K';
+    if (_isBackendAvailable) {
+      return 'Backend API - Live Gold Price';
     } else {
-      return 'MJDTA Unavailable - No Price Data';
+      return 'Backend Unavailable - No Price Data';
     }
   }
 
-  // Force MJDTA retry
-  Future<void> retryMjdtaConnection() async {
+  // Force backend retry
+  Future<void> retryBackendConnection() async {
     await _updatePrice();
   }
 
-  // Check if purchases are allowed (only when MJDTA is available)
-  bool get canPurchase => _isMjdtaAvailable && _currentPrice != null;
+  // Fetch gold price from backend API
+  Future<GoldPriceModel?> _fetchGoldPriceFromBackend() async {
+    try {
+      print('GoldPriceService: Calling backend API for gold price...');
 
-  // Get historical prices (only available when MJDTA is working)
+      final response = await http.get(
+        Uri.parse('http://localhost:3000/api/gold/price'),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          print('GoldPriceService: Successfully received price data from backend');
+          return GoldPriceModel.fromJson(data['data']);
+        }
+      }
+
+      print('GoldPriceService: Backend API returned error: ${response.statusCode}');
+      return null;
+    } catch (e) {
+      print('GoldPriceService: Error calling backend API: $e');
+      return null;
+    }
+  }
+
+  // Check if purchases are allowed (only when backend is available)
+  bool get canPurchase => _isBackendAvailable && _currentPrice != null;
+
+  // Get historical prices (only available when backend is working)
   Future<List<GoldPriceModel>> getHistoricalPrices({
     required DateTime startDate,
     required DateTime endDate,
   }) async {
-    // Return empty list if MJDTA is not available
-    if (!_isMjdtaAvailable || _currentPrice == null) {
+    // Return empty list if backend is not available
+    if (!_isBackendAvailable || _currentPrice == null) {
       return [];
     }
 
-    // Historical data would typically come from MJDTA API
+    // Historical data would typically come from backend API
     // For now, return empty list as we only support real-time data
     return [];
   }
@@ -166,8 +193,8 @@ class GoldPriceService {
     required double monthlyAmount,
     required int months,
   }) {
-    // Return null if MJDTA is not available
-    if (!_isMjdtaAvailable || _currentPrice == null) {
+    // Return null if backend is not available
+    if (!_isBackendAvailable || _currentPrice == null) {
       return null;
     }
 

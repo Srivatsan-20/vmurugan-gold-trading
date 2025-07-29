@@ -15,10 +15,18 @@ import 'features/notifications/screens/notifications_screen.dart';
 import 'features/notifications/services/notification_service.dart';
 import 'features/notifications/models/notification_model.dart';
 import 'core/services/customer_service.dart';
+import 'core/services/migration_service.dart';
 import 'features/schemes/screens/scheme_creation_screen.dart';
 import 'features/debug/screens/debug_screen.dart';
+import 'test_platform_fix.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize migration service to use backend-only mode
+  await MigrationService.initialize();
+  print('🚀 App starting in ${MigrationService.currentPhase} mode');
+
   runApp(const DigiGoldApp());
 }
 
@@ -105,10 +113,10 @@ class _HomePageState extends State<HomePage> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            Text('Status: ${_priceService.isMjdtaAvailable ? "🟢 MJDTA Live Data" : "🔴 MJDTA Unavailable"}'),
+            Text('Status: ${_priceService.isBackendAvailable ? "🟢 Backend Live Data" : "🔴 Backend Unavailable"}'),
             const SizedBox(height: 8),
-            if (!_priceService.isMjdtaAvailable) ...[
-              const Text('• MJDTA service is currently unavailable'),
+            if (!_priceService.isBackendAvailable) ...[
+              const Text('• Backend service is currently unavailable'),
               const Text('• Gold purchases are disabled'),
               const Text('• No price data available'),
               const SizedBox(height: 8),
@@ -136,11 +144,11 @@ class _HomePageState extends State<HomePage> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
           ),
-          if (!_priceService.isMjdtaAvailable)
+          if (!_priceService.isBackendAvailable)
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);
-                await _priceService.retryMjdtaConnection();
+                await _priceService.retryBackendConnection();
               },
               child: const Text('Retry MJDTA'),
             ),
@@ -232,6 +240,8 @@ class _HomePageState extends State<HomePage> {
                 _showAboutDialog(context);
               } else if (value == 'test_register') {
                 _testRegistration(context);
+              } else if (value == 'test_platform') {
+                _testPlatform(context);
               } else if (value == 'create_scheme') {
                 _navigateToSchemeCreation(context);
               } else if (value == 'debug') {
@@ -266,6 +276,16 @@ class _HomePageState extends State<HomePage> {
                     Icon(Icons.bug_report),
                     SizedBox(width: 8),
                     Text('Test Registration'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'test_platform',
+                child: Row(
+                  children: [
+                    Icon(Icons.web),
+                    SizedBox(width: 8),
+                    Text('Test Platform Fix'),
                   ],
                 ),
               ),
@@ -457,15 +477,15 @@ class _HomePageState extends State<HomePage> {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: _priceService.isMjdtaAvailable
+                            color: _priceService.isBackendAvailable
                                 ? AppColors.success.withValues(alpha: 0.1)
                                 : Colors.red.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            _priceService.isMjdtaAvailable ? 'MJDTA LIVE' : 'UNAVAILABLE',
+                            _priceService.isBackendAvailable ? 'BACKEND LIVE' : 'UNAVAILABLE',
                             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: _priceService.isMjdtaAvailable
+                              color: _priceService.isBackendAvailable
                                   ? AppColors.success
                                   : Colors.red,
                               fontWeight: FontWeight.bold,
@@ -909,5 +929,12 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       print('Error creating demo transaction: $e');
     }
+  }
+
+  void _testPlatform(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const TestPlatformFix()),
+    );
   }
 }

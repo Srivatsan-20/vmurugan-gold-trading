@@ -227,15 +227,15 @@ class _BuyGoldScreenState extends State<BuyGoldScreen> {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: _priceService.isMjdtaAvailable
+                      color: _priceService.isBackendAvailable
                           ? AppColors.success.withValues(alpha: 0.1)
                           : Colors.red.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      _priceService.isMjdtaAvailable ? 'MJDTA LIVE' : 'UNAVAILABLE',
+                      _priceService.isBackendAvailable ? 'BACKEND LIVE' : 'UNAVAILABLE',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: _priceService.isMjdtaAvailable
+                        color: _priceService.isBackendAvailable
                             ? AppColors.success
                             : Colors.red,
                         fontWeight: FontWeight.bold,
@@ -826,7 +826,7 @@ class _BuyGoldScreenState extends State<BuyGoldScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _priceService.retryMjdtaConnection();
+              _priceService.retryBackendConnection();
             },
             child: const Text('Retry'),
           ),

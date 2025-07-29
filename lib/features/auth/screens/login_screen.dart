@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/responsive.dart';
 import '../../../core/widgets/custom_button.dart';
@@ -233,29 +234,37 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
       try {
-        // Check if customer exists with this phone number
-        final customerExists = await _validateCustomer(_phoneController.text.trim());
+        // Validate MPIN format first
+        if (_mpinController.text.length != 4) {
+          _showErrorMessage('Invalid MPIN. Please enter 4 digits.');
+          return;
+        }
 
-        if (customerExists) {
-          // For now, accept any 4-digit MPIN for registered customers
-          // In production, you would validate the actual MPIN
-          if (_mpinController.text.length == 4) {
-            // Save login session
-            await CustomerService.saveLoginSession(_phoneController.text.trim());
+        // Attempt login with backend API
+        final loginResult = await ApiService.loginCustomer(
+          phone: _phoneController.text.trim(),
+          password: 'temp123', // Default password used during registration
+        );
 
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('✅ Login successful! Welcome back.'),
-                backgroundColor: AppColors.success,
-              ),
-            );
+        if (loginResult['success'] == true) {
+          // Save login session with customer data from login response
+          await _saveLoginSessionFromResult(loginResult);
 
-            _navigateToHome();
-          } else {
-            _showErrorMessage('Invalid MPIN. Please enter 4 digits.');
-          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Login successful! Welcome back.'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+
+          _navigateToHome();
         } else {
-          _showErrorMessage('Phone number not registered. Please register first.');
+          final message = loginResult['message'] ?? 'Login failed';
+          if (message.contains('not found') || message.contains('Invalid')) {
+            _showErrorMessage('Phone number not registered. Please register first.');
+          } else {
+            _showErrorMessage('Login failed: $message');
+          }
         }
       } catch (e) {
         _showErrorMessage('Login failed. Please try again.');
@@ -267,14 +276,35 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<bool> _validateCustomer(String phone) async {
+  Future<void> _saveLoginSessionFromResult(Map<String, dynamic> loginResult) async {
     try {
-      // Check if customer exists in Firebase
-      final result = await ApiService.getCustomerByPhone(phone);
-      return result['success'] && result['customer'] != null;
+      final prefs = await SharedPreferences.getInstance();
+
+      if (loginResult['success'] == true && loginResult['data'] != null) {
+        final data = loginResult['data'];
+
+        // Save customer info from login response
+        await prefs.setString('customer_phone', data['phone'] ?? '');
+        await prefs.setString('customer_name', data['name'] ?? '');
+        await prefs.setString('customer_email', data['email'] ?? '');
+        await prefs.setString('customer_id', data['customerId'] ?? '');
+        await prefs.setBool('customer_registered', true);
+
+        // Save authentication tokens
+        if (data['accessToken'] != null) {
+          await prefs.setString('access_token', data['accessToken']);
+        }
+        if (data['refreshToken'] != null) {
+          await prefs.setString('refresh_token', data['refreshToken']);
+        }
+
+        print('✅ Login session saved successfully');
+        print('   Customer ID: ${data['customerId']}');
+        print('   Name: ${data['name']}');
+        print('   Phone: ${data['phone']}');
+      }
     } catch (e) {
-      print('Error validating customer: $e');
-      return false;
+      print('❌ Error saving login session: $e');
     }
   }
 
