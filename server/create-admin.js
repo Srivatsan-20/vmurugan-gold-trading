@@ -46,26 +46,9 @@ async function createAdminUser() {
       `);
     
     console.log('✅ Admin user created successfully');
-
-    // Create test customer
-    const testPasswordHash = await bcrypt.hash('test123', 10);
-
-    // Insert test user
-    await pool.request()
-      .input('phone', sql.NVarChar, '9876543210')
-      .input('email', sql.NVarChar, 'test@vmurugan.com')
-      .input('passwordHash', sql.NVarChar, testPasswordHash)
-      .input('name', sql.NVarChar, 'Test Customer')
-      .query(`
-        INSERT INTO users (phone, email, password_hash, name, role, is_active)
-        VALUES (@phone, @email, @passwordHash, @name, 'customer', 1)
-      `);
-    
-    console.log('✅ Test customer created');
     console.log('');
     console.log('🎯 Login Credentials:');
     console.log('   Admin: 9999999999 / VMURUGAN_ADMIN_2025');
-    console.log('   Test Customer: 9876543210 / test123');
     
     await pool.close();
     
