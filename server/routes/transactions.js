@@ -49,16 +49,6 @@ const router = express.Router();
  *                 minimum: 0.01
  *                 description: Transaction amount
  *                 example: 10000.00
- *               goldGrams:
- *                 type: number
- *                 minimum: 0.001
- *                 description: Gold quantity in grams
- *                 example: 1.5
- *               goldPricePerGram:
- *                 type: number
- *                 minimum: 0.01
- *                 description: Gold price per gram
- *                 example: 6666.67
  *               paymentMethod:
  *                 type: string
  *                 enum: [UPI, CARD, NET_BANKING, CASH]
@@ -103,7 +93,12 @@ const router = express.Router();
  *                       example: 10000.00
  *                     goldGrams:
  *                       type: number
+ *                       description: Calculated automatically as amount ÷ goldPricePerGram
  *                       example: 1.5
+ *                     goldPricePerGram:
+ *                       type: number
+ *                       description: Fetched automatically from live gold price API
+ *                       example: 6666.67
  *                     status:
  *                       type: string
  *                       example: PENDING
@@ -119,8 +114,6 @@ router.post('/', [
   body('customerId').notEmpty().withMessage('Customer ID is required'),
   body('type').isIn(['BUY', 'SELL', 'SCHEME_PAYMENT']).withMessage('Invalid transaction type'),
   body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
-  body('goldGrams').isFloat({ min: 0.001 }).withMessage('Gold grams must be greater than 0'),
-  body('goldPricePerGram').isFloat({ min: 0.01 }).withMessage('Gold price must be greater than 0'),
   body('paymentMethod').isIn(['UPI', 'CARD', 'NET_BANKING', 'CASH']).withMessage('Invalid payment method')
 ], async (req, res) => {
   try {
@@ -137,8 +130,6 @@ router.post('/', [
       customerId,
       type,
       amount,
-      goldGrams,
-      goldPricePerGram,
       paymentMethod,
       gatewayTransactionId,
       gatewayOrderId,
@@ -146,6 +137,30 @@ router.post('/', [
       location,
       notes
     } = req.body;
+
+    // Fetch current gold price from the live price API
+    let goldPricePerGram;
+    try {
+      const axios = require('axios');
+      const priceResponse = await axios.get('http://localhost:3000/api/gold/price');
+
+      if (priceResponse.data.success && priceResponse.data.data) {
+        goldPricePerGram = priceResponse.data.data.pricePerGram;
+        console.log(`Using live gold price: ₹${goldPricePerGram}/gram`);
+      } else {
+        throw new Error('Failed to fetch gold price');
+      }
+    } catch (error) {
+      console.error('Error fetching gold price:', error.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to fetch current gold price. Please try again later.',
+        error: 'Gold price service unavailable'
+      });
+    }
+
+    // Calculate gold grams based on amount and live price per gram
+    const goldGrams = parseFloat((amount / goldPricePerGram).toFixed(4));
 
     const pool = req.app.locals.pool;
     const transactionId = `TXN_${Date.now()}_${uuidv4().substring(0, 8)}`;
@@ -164,22 +179,15 @@ router.post('/', [
 
     const customer = customerResult.recordset[0];
 
-    // Calculate fees (example: 1% transaction fee + 18% GST)
-    const transactionFee = amount * 0.01;
-    const gst = transactionFee * 0.18;
-    const totalFees = transactionFee + gst;
-
     // Start transaction
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
 
     try {
-      // Insert transaction
+      // Insert transaction (using only columns that exist in the database)
       await transaction.request()
         .input('transactionId', sql.NVarChar, transactionId)
         .input('customerId', sql.NVarChar, customerId)
-        .input('customerPhone', sql.NVarChar, customer.phone)
-        .input('customerName', sql.NVarChar, customer.name)
         .input('type', sql.NVarChar, type)
         .input('amount', sql.Decimal(15, 2), amount)
         .input('goldGrams', sql.Decimal(10, 4), goldGrams)
@@ -187,25 +195,14 @@ router.post('/', [
         .input('paymentMethod', sql.NVarChar, paymentMethod)
         .input('status', sql.NVarChar, 'PENDING')
         .input('gatewayTransactionId', sql.NVarChar, gatewayTransactionId || null)
-        .input('gatewayOrderId', sql.NVarChar, gatewayOrderId || null)
-        .input('deviceInfo', sql.NVarChar, deviceInfo || null)
-        .input('location', sql.NVarChar, location || null)
         .input('notes', sql.NVarChar, notes || null)
-        .input('businessId', sql.NVarChar, process.env.BUSINESS_ID || 'VMURUGAN_001')
-        .input('transactionFee', sql.Decimal(10, 2), transactionFee)
-        .input('gst', sql.Decimal(10, 2), gst)
-        .input('totalFees', sql.Decimal(10, 2), totalFees)
         .query(`
           INSERT INTO transactions (
-            transaction_id, customer_id, customer_phone, customer_name, type, amount,
-            gold_grams, gold_price_per_gram, payment_method, status, gateway_transaction_id,
-            gateway_order_id, device_info, location, notes, business_id,
-            transaction_fee, gst, total_fees
+            transaction_id, customer_id, type, amount, gold_grams,
+            gold_price_per_gram, payment_method, status, gateway_transaction_id, notes
           ) VALUES (
-            @transactionId, @customerId, @customerPhone, @customerName, @type, @amount,
-            @goldGrams, @goldPricePerGram, @paymentMethod, @status, @gatewayTransactionId,
-            @gatewayOrderId, @deviceInfo, @location, @notes, @businessId,
-            @transactionFee, @gst, @totalFees
+            @transactionId, @customerId, @type, @amount, @goldGrams,
+            @goldPricePerGram, @paymentMethod, @status, @gatewayTransactionId, @notes
           )
         `);
 
@@ -220,12 +217,11 @@ router.post('/', [
           type,
           amount,
           goldGrams,
+          goldPricePerGram,
+          paymentMethod,
           status: 'PENDING',
-          fees: {
-            transactionFee,
-            gst,
-            totalFees
-          }
+          gatewayTransactionId,
+          notes
         }
       });
 
@@ -470,7 +466,7 @@ router.get('/customer/:customerId', [
       SELECT *
       FROM transactions
       ${whereClause}
-      ORDER BY timestamp DESC
+      ORDER BY created_at DESC
       OFFSET @offset ROWS
       FETCH NEXT @limit ROWS ONLY
     `);

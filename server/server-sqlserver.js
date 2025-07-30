@@ -162,11 +162,6 @@ const authenticateToken = async (req, res, next) => {
       sessionId: result.recordset[0].session_id
     };
 
-    // Update last used timestamp
-    await pool.request()
-      .input('sessionId', sql.UniqueIdentifier, req.user.sessionId)
-      .query('UPDATE sessions SET last_used_at = GETUTCDATE() WHERE session_id = @sessionId');
-
     next();
   } catch (error) {
     console.error('Token verification error:', error);
