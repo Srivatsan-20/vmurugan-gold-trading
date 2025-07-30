@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'firebase_service.dart';
 import 'custom_server_service.dart';
 import 'backend_api_service.dart';
+import 'customer_service.dart';
 
 class ApiService {
   // CONFIGURATION: Switch between Firebase and Custom Server
@@ -44,10 +45,21 @@ class ApiService {
         location: location,
       );
     } else {
-      // For backend API, we need to get customerId from phone
-      // For now, use phone as customerId (this should be improved)
+      // For backend API, get the proper customerId from customer service
+      final customerInfo = await CustomerService.getCustomerInfo();
+      final customerId = customerInfo['customer_id'];
+
+      if (customerId == null || customerId.isEmpty) {
+        print('❌ No customer ID found for transaction');
+        return {
+          'success': false,
+          'message': 'Customer ID not found. Please login again.',
+        };
+      }
+
+      print('📝 Creating transaction for customer: $customerId');
       return await BackendApiService.createTransaction(
-        customerId: customerPhone, // Using phone as customerId for now
+        customerId: customerId, // Use proper customer ID from login
         type: type,
         amount: amount,
         goldGrams: goldGrams,
@@ -112,7 +124,7 @@ class ApiService {
       return await BackendApiService.registerCustomer(
         phone: phone,
         email: email,
-        password: 'temp123', // Default password
+        password: 'test123', // Default password for new users
         name: name,
         address: address,
         panCard: panCard,
@@ -187,6 +199,33 @@ class ApiService {
     }
   }
 
+  // Smart router: Get customer transactions
+  static Future<Map<String, dynamic>> getCustomerTransactions({
+    required String customerId,
+    int page = 1,
+    int limit = 20,
+    String? status,
+    String? type,
+  }) async {
+    print('ApiService: Routing to $mode for customer transactions');
+
+    if (useFirebase) {
+      return await FirebaseService.getTransactions(
+        limit: limit,
+        status: status,
+      );
+    } else {
+      // Use backend API to get customer transactions
+      return await BackendApiService.getCustomerTransactions(
+        customerId: customerId,
+        page: page,
+        limit: limit,
+        status: status,
+        type: type,
+      );
+    }
+  }
+
   // Smart router: Get customer by phone
   static Future<Map<String, dynamic>> getCustomerByPhone(String phone) async {
     print('ApiService: Routing to $mode for customer lookup');
@@ -237,12 +276,11 @@ class ApiService {
         endDate: endDate,
       );
     } else {
-      // TODO: Implement custom server transaction retrieval
-      return {
-        'success': false,
-        'message': 'Custom server not implemented',
-        'transactions': <Map<String, dynamic>>[],
-      };
+      // Use backend API to get transactions
+      return await BackendApiService.getAllTransactions(
+        limit: limit,
+        status: status,
+      );
     }
   }
 

@@ -16,7 +16,7 @@ class GoldSchemeService {
 
   // Initialize service
   void initialize() {
-    _createSampleScheme();
+    // No sample schemes - start with empty list
   }
 
   // Get all user schemes
@@ -220,50 +220,5 @@ class GoldSchemeService {
     }
   }
 
-  // Create sample scheme for demo
-  void _createSampleScheme() {
-    final now = DateTime.now();
-    final startDate = DateTime(now.year, now.month - 3, now.day); // Started 3 months ago
-    
-    // Create sample payments
-    final samplePayments = <SchemePayment>[];
-    for (int i = 0; i < 3; i++) {
-      final paymentDate = DateTime(startDate.year, startDate.month + i, startDate.day);
-      final goldPrice = 6200.0 + (i * 25); // Simulate price increase
-      final goldQuantity = 2000.0 / goldPrice;
-      
-      samplePayments.add(SchemePayment(
-        id: 'payment_sample_$i',
-        schemeId: 'scheme_sample',
-        amount: 2000.0,
-        goldPrice: goldPrice,
-        goldQuantity: goldQuantity,
-        paymentDate: paymentDate,
-        paymentMethod: 'UPI',
-        transactionId: 'txn_sample_$i',
-        status: 'completed',
-      ));
-    }
 
-    final totalInvested = samplePayments.fold(0.0, (sum, payment) => sum + payment.amount);
-    final totalGold = samplePayments.fold(0.0, (sum, payment) => sum + payment.goldQuantity);
-
-    final sampleScheme = GoldSchemeModel(
-      id: 'scheme_sample',
-      userId: 'user_demo',
-      schemeName: '11-Month Gold Scheme',
-      monthlyAmount: 2000.0,
-      totalMonths: 11,
-      completedMonths: 3,
-      startDate: startDate,
-      status: SchemeStatus.active,
-      totalInvested: totalInvested,
-      totalGoldAccumulated: totalGold,
-      payments: samplePayments,
-      createdAt: startDate,
-      updatedAt: now,
-    );
-
-    _userSchemes.add(sampleScheme);
-  }
 }

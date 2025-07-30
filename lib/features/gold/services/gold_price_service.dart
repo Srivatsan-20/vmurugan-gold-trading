@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/gold_price_model.dart';
+import '../../../core/config/api_config.dart';
 
 class GoldPriceService {
   static final GoldPriceService _instance = GoldPriceService._internal();
@@ -147,7 +148,7 @@ class GoldPriceService {
       print('GoldPriceService: Calling backend API for gold price...');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/gold/price'),
+        Uri.parse('${ApiConfig.baseUrl}/api/gold/price'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',

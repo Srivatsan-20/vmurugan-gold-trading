@@ -243,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
         // Attempt login with backend API
         final loginResult = await ApiService.loginCustomer(
           phone: _phoneController.text.trim(),
-          password: 'temp123', // Default password used during registration
+          password: 'test123', // Updated password for registered users
         );
 
         if (loginResult['success'] == true) {

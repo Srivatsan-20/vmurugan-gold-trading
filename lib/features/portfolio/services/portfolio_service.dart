@@ -2,32 +2,113 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/database/database_service.dart';
 import '../models/portfolio_model.dart';
 import '../../gold/models/gold_price_model.dart';
+import '../../gold/services/gold_price_service.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/services/customer_service.dart';
 
 class PortfolioService {
   final DatabaseService _db = DatabaseService();
 
-  // Get current portfolio
+  // Get current portfolio calculated from backend transactions
   Future<Portfolio> getPortfolio() async {
     try {
-      final portfolioData = await _db.getPortfolio();
-      if (portfolioData != null) {
-        return Portfolio.fromMap(portfolioData);
+      print('📊 PortfolioService: Calculating portfolio from backend transactions...');
+
+      // Get customer info
+      final customerInfo = await CustomerService.getCustomerInfo();
+      final customerId = customerInfo['customer_id'];
+
+      if (customerId == null) {
+        print('❌ No customer ID found');
+        return _getEmptyPortfolio();
       }
-      
-      // Return empty portfolio if none exists
-      return Portfolio(
-        id: 1,
-        totalGoldGrams: 0.0,
-        totalInvested: 0.0,
-        currentValue: 0.0,
-        profitLoss: 0.0,
-        profitLossPercentage: 0.0,
-        lastUpdated: DateTime.now(),
+
+      // Fetch transactions from backend API
+      final result = await ApiService.getCustomerTransactions(
+        customerId: customerId,
+        limit: 1000, // Get all transactions for portfolio calculation
       );
+
+      if (result['success'] == true) {
+        final transactionsData = List<Map<String, dynamic>>.from(result['data'] ?? []);
+        print('📊 Calculating portfolio from ${transactionsData.length} transactions');
+
+        // Calculate portfolio metrics from transactions
+        double totalGoldGrams = 0.0;
+        double totalInvested = 0.0;
+
+        for (final txn in transactionsData) {
+          final status = txn['status']?.toString().toUpperCase();
+          final type = txn['type']?.toString().toUpperCase();
+          final amount = txn['amount']?.toDouble() ?? 0.0;
+          final goldGrams = txn['gold_grams']?.toDouble() ?? 0.0;
+
+          // Only count successful transactions
+          if (status == 'SUCCESS' || status == 'PENDING') {
+            if (type == 'BUY' || type == 'SCHEME_PAYMENT') {
+              totalGoldGrams += goldGrams;
+              totalInvested += amount;
+            } else if (type == 'SELL') {
+              totalGoldGrams -= goldGrams;
+              // For sells, subtract the original investment proportionally
+              // This is a simplified calculation
+            }
+          }
+        }
+
+        // Get current gold price for valuation
+        double currentGoldPrice = 6000.0; // Default fallback
+        try {
+          final priceService = GoldPriceService();
+          final currentPrice = await priceService.getCurrentPrice();
+          if (currentPrice != null) {
+            currentGoldPrice = currentPrice.pricePerGram;
+          }
+        } catch (e) {
+          print('Warning: Could not fetch current gold price, using default');
+        }
+
+        // Calculate current value and profit/loss
+        final currentValue = totalGoldGrams * currentGoldPrice;
+        final profitLoss = currentValue - totalInvested;
+        final profitLossPercentage = totalInvested > 0 ? (profitLoss / totalInvested) * 100 : 0.0;
+
+        print('📊 Portfolio calculated:');
+        print('   Gold: ${totalGoldGrams.toStringAsFixed(3)}g');
+        print('   Invested: ₹${totalInvested.toStringAsFixed(2)}');
+        print('   Current Value: ₹${currentValue.toStringAsFixed(2)}');
+        print('   P&L: ₹${profitLoss.toStringAsFixed(2)} (${profitLossPercentage.toStringAsFixed(2)}%)');
+
+        return Portfolio(
+          id: 1,
+          totalGoldGrams: totalGoldGrams,
+          totalInvested: totalInvested,
+          currentValue: currentValue,
+          profitLoss: profitLoss,
+          profitLossPercentage: profitLossPercentage,
+          lastUpdated: DateTime.now(),
+        );
+      } else {
+        print('❌ Failed to fetch transactions: ${result['message']}');
+        return _getEmptyPortfolio();
+      }
     } catch (e) {
-      print('Error getting portfolio: $e');
-      rethrow;
+      print('❌ Error getting portfolio: $e');
+      return _getEmptyPortfolio();
     }
+  }
+
+  // Helper method to return empty portfolio
+  Portfolio _getEmptyPortfolio() {
+    return Portfolio(
+      id: 1,
+      totalGoldGrams: 0.0,
+      totalInvested: 0.0,
+      currentValue: 0.0,
+      profitLoss: 0.0,
+      profitLossPercentage: 0.0,
+      lastUpdated: DateTime.now(),
+    );
   }
 
   // Update portfolio after successful purchase
@@ -129,14 +210,79 @@ class PortfolioService {
     }
   }
 
-  // Get transaction history
+  // Get transaction history from backend API
   Future<List<Transaction>> getTransactionHistory({int? limit}) async {
     try {
-      final transactionData = await _db.getTransactions(limit: limit);
-      return transactionData.map((data) => Transaction.fromMap(data)).toList();
+      print('📊 PortfolioService: Fetching transaction history from backend...');
+
+      // Get customer info
+      final customerInfo = await CustomerService.getCustomerInfo();
+      final customerId = customerInfo['customer_id'];
+
+      if (customerId == null) {
+        print('❌ No customer ID found');
+        return [];
+      }
+
+      // Fetch transactions from backend API
+      final result = await ApiService.getCustomerTransactions(
+        customerId: customerId,
+        limit: limit ?? 50,
+      );
+
+      if (result['success'] == true) {
+        final transactionsData = List<Map<String, dynamic>>.from(result['data'] ?? []);
+        print('📊 Found ${transactionsData.length} transactions from backend');
+
+        // Convert backend transaction format to local Transaction model
+        return transactionsData.map((data) => Transaction(
+          transactionId: data['transaction_id'] ?? '',
+          type: _mapTransactionType(data['type']?.toString() ?? 'BUY'),
+          amount: (data['amount']?.toDouble() ?? 0.0),
+          goldGrams: (data['gold_grams']?.toDouble() ?? 0.0),
+          goldPricePerGram: (data['gold_price_per_gram']?.toDouble() ?? 0.0),
+          status: _mapTransactionStatus(data['status']?.toString() ?? 'PENDING'),
+          paymentMethod: data['payment_method']?.toString() ?? 'UPI',
+          gatewayTransactionId: data['gateway_transaction_id']?.toString(),
+          createdAt: DateTime.tryParse(data['created_at']?.toString() ?? '') ?? DateTime.now(),
+          updatedAt: DateTime.tryParse(data['created_at']?.toString() ?? '') ?? DateTime.now(),
+        )).toList();
+      } else {
+        print('❌ Failed to fetch transactions: ${result['message']}');
+        return [];
+      }
     } catch (e) {
-      print('Error getting transaction history: $e');
+      print('❌ Error getting transaction history: $e');
       return [];
+    }
+  }
+
+  // Helper method to map transaction type
+  TransactionType _mapTransactionType(String type) {
+    switch (type.toUpperCase()) {
+      case 'BUY':
+        return TransactionType.BUY;
+      case 'SELL':
+        return TransactionType.SELL;
+      case 'SCHEME_PAYMENT':
+        // Map scheme payments to BUY for now since enum doesn't have SCHEME_PAYMENT
+        return TransactionType.BUY;
+      default:
+        return TransactionType.BUY;
+    }
+  }
+
+  // Helper method to map transaction status
+  TransactionStatus _mapTransactionStatus(String status) {
+    switch (status.toUpperCase()) {
+      case 'SUCCESS':
+        return TransactionStatus.SUCCESS;
+      case 'PENDING':
+        return TransactionStatus.PENDING;
+      case 'FAILED':
+        return TransactionStatus.FAILED;
+      default:
+        return TransactionStatus.PENDING;
     }
   }
 

@@ -5,7 +5,8 @@
 
 class ApiConfig {
   // Backend API Configuration
-  static const String baseUrl = 'http://localhost:3000';
+  // Note: baseUrl is now dynamic based on environment
+  static String get baseUrl => ApiEnvironment.baseUrl;
   static const String businessId = 'VMURUGAN_001';
   static const String businessName = 'VMUrugan Gold Trading';
   
@@ -237,16 +238,23 @@ class ApiEnvironment {
 
   // Get appropriate local URL based on platform
   static String _getLocalUrl() {
-    // For local testing, you can manually change this based on your setup
+    // For APK build - use IP address that mobile can reach
+    // This should be your computer's IP address on the local network
 
     // Option 1: Android Emulator
     // return 'http://10.0.2.2:3000';
 
-    // Option 2: iOS Simulator or Web
-    return 'http://localhost:3000';
+    // Option 2: iOS Simulator or Web (localhost)
+    // return 'http://localhost:3000';
 
-    // Option 3: Physical Device (replace with your computer's IP)
-    // return 'http://192.168.1.100:3000';
+    // Option 3: Physical Device - MOBILE APK CONFIGURATION
+    // Your computer's actual IP address: 192.168.1.18
+    // Found via ipconfig command - Wi-Fi adapter IPv4 Address
+    return 'http://192.168.1.18:3000';
+
+    // Alternative common IP ranges:
+    // return 'http://192.168.0.100:3000';  // For 192.168.0.x networks
+    // return 'http://10.0.0.100:3000';     // For 10.0.0.x networks
   }
   
   static Duration get timeout {

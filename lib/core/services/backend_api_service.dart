@@ -376,12 +376,12 @@ class BackendApiService {
 
     String endpoint = '${ApiConfig.transactions}/customer/$customerId';
     List<String> queryParams = [];
-    
+
     queryParams.add('page=$page');
     queryParams.add('limit=$limit');
     if (status != null) queryParams.add('status=$status');
     if (type != null) queryParams.add('type=$type');
-    
+
     if (queryParams.isNotEmpty) {
       endpoint += '?${queryParams.join('&')}';
     }
@@ -394,6 +394,48 @@ class BackendApiService {
 
     if (response['success'] == true) {
       print('✅ Transactions retrieved successfully');
+      // Transform response to match expected format
+      return {
+        'success': true,
+        'data': response['data']['transactions'] ?? [],
+        'pagination': response['data']['pagination'],
+      };
+    }
+
+    return response;
+  }
+
+  // Get all transactions (admin)
+  static Future<Map<String, dynamic>> getAllTransactions({
+    int page = 1,
+    int limit = 50,
+    String? status,
+    String? type,
+    String? customerId,
+  }) async {
+    print('📊 Getting all transactions');
+
+    String endpoint = '${ApiConfig.adminTransactions}';
+    List<String> queryParams = [];
+
+    queryParams.add('page=$page');
+    queryParams.add('limit=$limit');
+    if (status != null) queryParams.add('status=$status');
+    if (type != null) queryParams.add('type=$type');
+    if (customerId != null) queryParams.add('customerId=$customerId');
+
+    if (queryParams.isNotEmpty) {
+      endpoint += '?${queryParams.join('&')}';
+    }
+
+    final response = await _makeRequest(
+      method: 'GET',
+      endpoint: endpoint,
+      requireAuth: true,
+    );
+
+    if (response['success'] == true) {
+      print('✅ All transactions retrieved successfully');
     }
 
     return response;

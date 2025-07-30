@@ -42,67 +42,25 @@ class _AdminTransactionsScreenState extends State<AdminTransactionsScreen> {
         _filterTransactions('');
       } else {
         _showErrorSnackBar('Failed to load transactions: ${result['message']}');
-        // Fallback to mock data for demo
-        _loadMockData();
+        // No transactions available
+        setState(() {
+          _transactions = [];
+          _filteredTransactions = [];
+        });
       }
     } catch (e) {
       _showErrorSnackBar('Error loading transactions: $e');
-      // Fallback to mock data for demo
-      _loadMockData();
+      // No transactions available
+      setState(() {
+        _transactions = [];
+        _filteredTransactions = [];
+      });
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  void _loadMockData() {
-    // Mock transaction data for demo purposes
-    _transactions = [
-      {
-        'transaction_id': 'TXN001',
-        'customer_name': 'Rajesh Kumar',
-        'customer_phone': '+91 9876543210',
-        'amount': 5000.0,
-        'gold_grams': 0.54,
-        'gold_price_per_gram': 9259.0,
-        'status': 'SUCCESS',
-        'payment_method': 'UPI',
-        'gateway_transaction_id': 'pay_abc123',
-        'timestamp': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
-        'device_info': 'Android 12',
-        'location': 'Chennai, India',
-      },
-      {
-        'transaction_id': 'TXN002',
-        'customer_name': 'Priya Sharma',
-        'customer_phone': '+91 8765432109',
-        'amount': 10000.0,
-        'gold_grams': 1.08,
-        'gold_price_per_gram': 9259.0,
-        'status': 'SUCCESS',
-        'payment_method': 'Card',
-        'gateway_transaction_id': 'pay_def456',
-        'timestamp': DateTime.now().subtract(const Duration(hours: 5)).toIso8601String(),
-        'device_info': 'iOS 16',
-        'location': 'Mumbai, India',
-      },
-      {
-        'transaction_id': 'TXN003',
-        'customer_name': 'Amit Patel',
-        'customer_phone': '+91 7654321098',
-        'amount': 2500.0,
-        'gold_grams': 0.27,
-        'gold_price_per_gram': 9259.0,
-        'status': 'FAILED',
-        'payment_method': 'UPI',
-        'gateway_transaction_id': 'pay_ghi789',
-        'timestamp': DateTime.now().subtract(const Duration(hours: 8)).toIso8601String(),
-        'device_info': 'Android 11',
-        'location': 'Delhi, India',
-      },
-    ];
 
-    _filteredTransactions = _transactions;
-  }
 
   void _filterTransactions(String query) {
     setState(() {

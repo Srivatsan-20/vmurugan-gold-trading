@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/responsive.dart';
 import '../../../core/widgets/custom_button.dart';
-import '../models/gold_scheme_model.dart';
-import '../services/gold_scheme_service.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/services/customer_service.dart';
 
 class TransactionHistoryScreen extends StatefulWidget {
   const TransactionHistoryScreen({super.key});
@@ -13,10 +13,10 @@ class TransactionHistoryScreen extends StatefulWidget {
 }
 
 class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
-  final GoldSchemeService _schemeService = GoldSchemeService();
-  List<SchemePayment> _allTransactions = [];
+  List<Map<String, dynamic>> _allTransactions = [];
   String _selectedFilter = 'All';
-  final List<String> _filterOptions = ['All', 'Completed', 'Pending', 'Failed'];
+  final List<String> _filterOptions = ['All', 'PENDING', 'SUCCESS', 'FAILED'];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -24,30 +24,60 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     _loadTransactions();
   }
 
-  void _loadTransactions() {
-    _schemeService.initialize();
-    final schemes = _schemeService.getUserSchemes();
-    
-    // Collect all payments from all schemes
-    final allPayments = <SchemePayment>[];
-    for (final scheme in schemes) {
-      allPayments.addAll(scheme.payments);
-    }
-    
-    // Sort by date (newest first)
-    allPayments.sort((a, b) => b.paymentDate.compareTo(a.paymentDate));
-    
+  void _loadTransactions() async {
+    print('📊 TransactionHistoryScreen: Loading transactions...');
+
     setState(() {
-      _allTransactions = allPayments;
+      _isLoading = true;
     });
+
+    try {
+      // Get customer info
+      print('📊 Getting customer info...');
+      final customerInfo = await CustomerService.getCustomerInfo();
+      final customerId = customerInfo['customer_id'];
+      print('📊 Customer ID: $customerId');
+
+      if (customerId != null) {
+        // Fetch real transactions from backend
+        print('📊 Fetching transactions for customer: $customerId');
+        final result = await ApiService.getCustomerTransactions(
+          customerId: customerId,
+          limit: 100,
+        );
+
+        print('📊 API Result: $result');
+
+        if (result['success'] == true) {
+          final transactions = List<Map<String, dynamic>>.from(result['data'] ?? []);
+          print('📊 Found ${transactions.length} transactions');
+          setState(() {
+            _allTransactions = transactions;
+          });
+        } else {
+          print('❌ Failed to fetch transactions: ${result['message']}');
+        }
+      } else {
+        print('❌ No customer ID found');
+      }
+
+      // Note: Scheme payments are handled separately if needed
+
+    } catch (e) {
+      print('❌ Error loading transactions: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
-  List<SchemePayment> get _filteredTransactions {
+  List<Map<String, dynamic>> get _filteredTransactions {
     if (_selectedFilter == 'All') {
       return _allTransactions;
     }
     return _allTransactions.where((transaction) {
-      return transaction.status.toLowerCase() == _selectedFilter.toLowerCase();
+      return transaction['status']?.toString().toUpperCase() == _selectedFilter.toUpperCase();
     }).toList();
   }
 
@@ -122,8 +152,10 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   }
 
   Widget _buildTransactionSummary() {
-    final totalAmount = _filteredTransactions.fold(0.0, (sum, transaction) => sum + transaction.amount);
-    final totalGold = _filteredTransactions.fold(0.0, (sum, transaction) => sum + transaction.goldQuantity);
+    final totalAmount = _filteredTransactions.fold(0.0, (sum, transaction) =>
+      sum + (transaction['amount']?.toDouble() ?? 0.0));
+    final totalGold = _filteredTransactions.fold(0.0, (sum, transaction) =>
+      sum + (transaction['gold_grams']?.toDouble() ?? 0.0));
     
     return Container(
       margin: const EdgeInsets.all(AppSpacing.md),
@@ -210,14 +242,21 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     );
   }
 
-  Widget _buildTransactionCard(SchemePayment transaction) {
+  Widget _buildTransactionCard(Map<String, dynamic> transaction) {
+    final status = transaction['status']?.toString() ?? 'PENDING';
+    final amount = transaction['amount']?.toDouble() ?? 0.0;
+    final goldGrams = transaction['gold_grams']?.toDouble() ?? 0.0;
+    final type = transaction['type']?.toString() ?? 'BUY';
+    final createdAt = transaction['created_at']?.toString() ?? '';
+    final transactionId = transaction['transaction_id']?.toString() ?? '';
+
     return Card(
-      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      margin: const EdgeInsets.only(bottom: 16),
       child: InkWell(
         onTap: () => _showTransactionDetails(transaction),
-        borderRadius: BorderRadius.circular(AppBorderRadius.md),
+        borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -229,28 +268,28 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                     height: 48,
                     decoration: BoxDecoration(
                       gradient: AppColors.goldGradient,
-                      borderRadius: BorderRadius.circular(AppBorderRadius.sm),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
-                      _getTransactionIcon(transaction.status),
+                      _getTransactionIcon(status),
                       color: AppColors.white,
                       size: 24,
                     ),
                   ),
-                  const SizedBox(width: AppSpacing.md),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Gold Purchase',
+                          'Gold $type',
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: AppSpacing.xs),
+                        const SizedBox(height: 4),
                         Text(
-                          _formatDate(transaction.paymentDate),
+                          transactionId,
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -262,7 +301,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        transaction.formattedAmount,
+                        '₹${amount.toStringAsFixed(2)}',
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: AppColors.primaryGreen,
@@ -275,13 +314,13 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                           vertical: AppSpacing.xs,
                         ),
                         decoration: BoxDecoration(
-                          color: _getStatusColor(transaction.status).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(AppBorderRadius.sm),
+                          color: _getStatusColor(status).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
-                          transaction.status.toUpperCase(),
+                          status.toUpperCase(),
                           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: _getStatusColor(transaction.status),
+                            color: _getStatusColor(status),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -305,19 +344,19 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                     Expanded(
                       child: _buildDetailItem(
                         'Gold Quantity',
-                        transaction.formattedGoldQuantity,
+                        '${goldGrams.toStringAsFixed(3)}g',
                       ),
                     ),
                     Expanded(
                       child: _buildDetailItem(
                         'Gold Price',
-                        transaction.formattedGoldPrice,
+                        '₹${(transaction['gold_price_per_gram']?.toDouble() ?? 0.0).toStringAsFixed(2)}/g',
                       ),
                     ),
                     Expanded(
                       child: _buildDetailItem(
                         'Payment Method',
-                        transaction.paymentMethod,
+                        transaction['payment_method']?.toString() ?? 'N/A',
                       ),
                     ),
                   ],
@@ -408,12 +447,12 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   }
 
   IconData _getTransactionIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
+    switch (status.toUpperCase()) {
+      case 'SUCCESS':
         return Icons.check_circle;
-      case 'pending':
+      case 'PENDING':
         return Icons.schedule;
-      case 'failed':
+      case 'FAILED':
         return Icons.error;
       default:
         return Icons.payment;
@@ -421,12 +460,12 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   }
 
   Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
+    switch (status.toUpperCase()) {
+      case 'SUCCESS':
         return AppColors.success;
-      case 'pending':
+      case 'PENDING':
         return AppColors.warning;
-      case 'failed':
+      case 'FAILED':
         return AppColors.error;
       default:
         return AppColors.grey;
@@ -441,7 +480,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
-  void _showTransactionDetails(SchemePayment transaction) {
+  void _showTransactionDetails(Map<String, dynamic> transaction) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -493,13 +532,13 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildDetailRow('Transaction ID', transaction.transactionId),
-                    _buildDetailRow('Amount', transaction.formattedAmount),
-                    _buildDetailRow('Gold Quantity', transaction.formattedGoldQuantity),
-                    _buildDetailRow('Gold Price', transaction.formattedGoldPrice),
-                    _buildDetailRow('Payment Method', transaction.paymentMethod),
-                    _buildDetailRow('Date', _formatDate(transaction.paymentDate)),
-                    _buildDetailRow('Status', transaction.status.toUpperCase()),
+                    _buildDetailRow('Transaction ID', transaction['transaction_id']?.toString() ?? 'N/A'),
+                    _buildDetailRow('Amount', '₹${(transaction['amount']?.toDouble() ?? 0.0).toStringAsFixed(2)}'),
+                    _buildDetailRow('Gold Quantity', '${(transaction['gold_grams']?.toDouble() ?? 0.0).toStringAsFixed(3)}g'),
+                    _buildDetailRow('Gold Price', '₹${(transaction['gold_price_per_gram']?.toDouble() ?? 0.0).toStringAsFixed(2)}/g'),
+                    _buildDetailRow('Payment Method', transaction['payment_method']?.toString() ?? 'N/A'),
+                    _buildDetailRow('Date', transaction['created_at']?.toString() ?? 'N/A'),
+                    _buildDetailRow('Status', (transaction['status']?.toString() ?? 'PENDING').toUpperCase()),
                   ],
                 ),
               ),

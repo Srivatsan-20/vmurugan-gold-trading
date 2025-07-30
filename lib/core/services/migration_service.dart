@@ -259,7 +259,7 @@ class MigrationService {
     return await BackendApiService.registerCustomer(
       phone: phone,
       email: email,
-      password: password ?? 'temp123', // Temporary password
+      password: password ?? 'test123', // Default password for new users
       name: name,
       address: address,
       panCard: panCard,

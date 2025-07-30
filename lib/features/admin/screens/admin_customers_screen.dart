@@ -22,44 +22,9 @@ class _AdminCustomersScreenState extends State<AdminCustomersScreen> {
   }
 
   void _loadCustomers() {
-    // Mock customer data - in real app, load from Firebase
-    _customers = [
-      {
-        'id': '1',
-        'name': 'Rajesh Kumar',
-        'phone': '+91 9876543210',
-        'email': 'rajesh@example.com',
-        'totalInvested': 25000.0,
-        'goldHoldings': 3.45,
-        'joinDate': '2025-01-15',
-        'kycStatus': 'Verified',
-        'lastTransaction': '2025-01-20',
-      },
-      {
-        'id': '2',
-        'name': 'Priya Sharma',
-        'phone': '+91 9876543211',
-        'email': 'priya@example.com',
-        'totalInvested': 15000.0,
-        'goldHoldings': 2.10,
-        'joinDate': '2025-01-18',
-        'kycStatus': 'Pending',
-        'lastTransaction': '2025-01-22',
-      },
-      {
-        'id': '3',
-        'name': 'Amit Patel',
-        'phone': '+91 9876543212',
-        'email': 'amit@example.com',
-        'totalInvested': 50000.0,
-        'goldHoldings': 6.78,
-        'joinDate': '2025-01-10',
-        'kycStatus': 'Verified',
-        'lastTransaction': '2025-01-23',
-      },
-    ];
-    
-    _filteredCustomers = List.from(_customers);
+    // No mock data - load real customers from backend API
+    _customers = [];
+    _filteredCustomers = [];
     setState(() {
       _isLoading = false;
     });

@@ -880,56 +880,15 @@ class _HomePageState extends State<HomePage> {
       priority: NotificationPriority.normal,
     );
 
-    // Also create a test transaction for demo
-    await _createTestTransaction();
-
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Test notification and transaction created!'),
+        content: Text('Test notification created!'),
         backgroundColor: Colors.green,
       ),
     );
   }
 
-  Future<void> _createTestTransaction() async {
-    try {
-      // Create a mock successful transaction for demo
-      final customerInfo = await CustomerService.getCustomerInfo();
-      final customerPhone = customerInfo['phone'] ?? '+91 9876543210';
-      final customerName = customerInfo['name'] ?? 'Demo Customer';
 
-      final transactionData = {
-        'transaction_id': 'DEMO_${DateTime.now().millisecondsSinceEpoch}',
-        'customer_phone': customerPhone,
-        'customer_name': customerName,
-        'type': 'BUY',
-        'amount': 2000.0,
-        'gold_grams': 0.216,
-        'gold_price_per_gram': _currentPrice?.pricePerGram ?? 9259.0,
-        'payment_method': 'Demo Payment',
-        'status': 'SUCCESS',
-        'gateway_transaction_id': 'demo_pay_${DateTime.now().millisecondsSinceEpoch}',
-        'device_info': 'Demo Device',
-        'location': 'Demo Location',
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-
-      await CustomerService.saveTransactionWithCustomerData(
-        transactionId: transactionData['transaction_id'] as String,
-        type: transactionData['type'] as String,
-        amount: transactionData['amount'] as double,
-        goldGrams: transactionData['gold_grams'] as double,
-        goldPricePerGram: transactionData['gold_price_per_gram'] as double,
-        paymentMethod: transactionData['payment_method'] as String,
-        status: transactionData['status'] as String,
-        gatewayTransactionId: transactionData['gateway_transaction_id'] as String,
-      );
-
-      print('Demo transaction created successfully');
-    } catch (e) {
-      print('Error creating demo transaction: $e');
-    }
-  }
 
   void _testPlatform(BuildContext context) {
     Navigator.push(
