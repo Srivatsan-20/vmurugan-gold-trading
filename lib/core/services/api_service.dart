@@ -106,6 +106,7 @@ class ApiService {
     required String email,
     required String address,
     required String panCard,
+    required String mpin,
     required String deviceId,
   }) async {
     print('ApiService: Routing to $mode for customer save');
@@ -124,7 +125,7 @@ class ApiService {
       return await BackendApiService.registerCustomer(
         phone: phone,
         email: email,
-        password: 'test123', // Default password for new users
+        password: mpin, // Use MPIN as password
         name: name,
         address: address,
         panCard: panCard,
@@ -183,7 +184,7 @@ class ApiService {
   // Smart router: Login customer
   static Future<Map<String, dynamic>> loginCustomer({
     required String phone,
-    required String password,
+    required String mpin,
   }) async {
     print('ApiService: Routing to $mode for customer login');
 
@@ -194,7 +195,7 @@ class ApiService {
       // Use backend API login
       return await BackendApiService.loginCustomer(
         phone: phone,
-        password: password,
+        password: mpin, // Use MPIN as password
       );
     }
   }

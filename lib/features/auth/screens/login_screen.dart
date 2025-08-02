@@ -236,42 +236,80 @@ class _LoginScreenState extends State<LoginScreen> {
       try {
         // Validate MPIN format first
         if (_mpinController.text.length != 4) {
-          _showErrorMessage('Invalid MPIN. Please enter 4 digits.');
+          _showErrorMessage('Invalid MPIN. Please enter exactly 4 digits.');
           return;
         }
 
-        // Attempt login with backend API
-        final loginResult = await ApiService.loginCustomer(
+        if (!RegExp(r'^[0-9]{4}$').hasMatch(_mpinController.text)) {
+          _showErrorMessage('MPIN must contain only numbers.');
+          return;
+        }
+
+        print('🔐 Attempting login for phone: ${_phoneController.text.trim()}');
+
+        // Attempt login with MPIN using CustomerService
+        final loginResult = await CustomerService.loginWithMPin(
           phone: _phoneController.text.trim(),
-          password: 'test123', // Updated password for registered users
+          mpin: _mpinController.text.trim(),
         );
 
         if (loginResult['success'] == true) {
-          // Save login session with customer data from login response
+          // Save login session data
           await _saveLoginSessionFromResult(loginResult);
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Login successful! Welcome back.'),
-              backgroundColor: AppColors.success,
-            ),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Welcome back! Login successful.',
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: AppColors.success,
+                duration: const Duration(seconds: 2),
+              ),
+            );
 
-          _navigateToHome();
+            // Small delay to show success message
+            await Future.delayed(const Duration(milliseconds: 500));
+            _navigateToHome();
+          }
         } else {
           final message = loginResult['message'] ?? 'Login failed';
-          if (message.contains('not found') || message.contains('Invalid')) {
-            _showErrorMessage('Phone number not registered. Please register first.');
+          String userFriendlyMessage;
+
+          if (message.toLowerCase().contains('not found') ||
+              message.toLowerCase().contains('invalid phone') ||
+              message.toLowerCase().contains('user not found')) {
+            userFriendlyMessage = 'Phone number not registered. Please register first.';
+          } else if (message.toLowerCase().contains('invalid') &&
+                     message.toLowerCase().contains('password')) {
+            userFriendlyMessage = 'Incorrect MPIN. Please try again.';
+          } else if (message.toLowerCase().contains('account') &&
+                     message.toLowerCase().contains('inactive')) {
+            userFriendlyMessage = 'Account is inactive. Please contact support.';
           } else {
-            _showErrorMessage('Login failed: $message');
+            userFriendlyMessage = 'Login failed. Please check your phone number and MPIN.';
           }
+
+          _showErrorMessage(userFriendlyMessage);
         }
       } catch (e) {
-        _showErrorMessage('Login failed. Please try again.');
+        print('❌ Login error: $e');
+        _showErrorMessage('Network error. Please check your connection and try again.');
       } finally {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
   }
@@ -280,31 +318,47 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      if (loginResult['success'] == true && loginResult['data'] != null) {
-        final data = loginResult['data'];
-
-        // Save customer info from login response
-        await prefs.setString('customer_phone', data['phone'] ?? '');
-        await prefs.setString('customer_name', data['name'] ?? '');
-        await prefs.setString('customer_email', data['email'] ?? '');
-        await prefs.setString('customer_id', data['customerId'] ?? '');
-        await prefs.setBool('customer_registered', true);
-
-        // Save authentication tokens
-        if (data['accessToken'] != null) {
-          await prefs.setString('access_token', data['accessToken']);
-        }
-        if (data['refreshToken'] != null) {
-          await prefs.setString('refresh_token', data['refreshToken']);
+      if (loginResult['success'] == true) {
+        // Handle different response formats
+        Map<String, dynamic>? data;
+        if (loginResult['data'] != null) {
+          data = loginResult['data'];
+        } else if (loginResult['customer_data'] != null) {
+          data = loginResult['customer_data'];
         }
 
-        print('✅ Login session saved successfully');
-        print('   Customer ID: ${data['customerId']}');
-        print('   Name: ${data['name']}');
-        print('   Phone: ${data['phone']}');
+        if (data != null) {
+          // Save customer info from login response
+          await prefs.setString('customer_phone', data['phone'] ?? _phoneController.text.trim());
+          await prefs.setString('customer_name', data['name'] ?? data['customer_name'] ?? '');
+          await prefs.setString('customer_email', data['email'] ?? '');
+          await prefs.setString('customer_id', data['customerId'] ?? data['customer_id'] ?? '');
+          await prefs.setBool('customer_registered', true);
+          await prefs.setString('last_login', DateTime.now().toIso8601String());
+
+          // Save authentication tokens if available
+          if (data['accessToken'] != null) {
+            await prefs.setString('access_token', data['accessToken']);
+          }
+          if (data['refreshToken'] != null) {
+            await prefs.setString('refresh_token', data['refreshToken']);
+          }
+
+          print('✅ Login session saved successfully');
+          print('   Customer ID: ${data['customerId'] ?? data['customer_id']}');
+          print('   Name: ${data['name'] ?? data['customer_name']}');
+          print('   Phone: ${data['phone']}');
+        } else {
+          // Fallback: save minimal session data
+          await prefs.setString('customer_phone', _phoneController.text.trim());
+          await prefs.setBool('customer_registered', true);
+          await prefs.setString('last_login', DateTime.now().toIso8601String());
+          print('✅ Minimal login session saved');
+        }
       }
     } catch (e) {
       print('❌ Error saving login session: $e');
+      // Don't throw error as login was successful
     }
   }
 

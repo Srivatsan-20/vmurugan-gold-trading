@@ -758,6 +758,7 @@ class _HomePageState extends State<HomePage> {
         email: 'test${DateTime.now().millisecondsSinceEpoch}@vmurugan.com',
         address: 'Test Address, Chennai, Tamil Nadu',
         panCard: 'ABCDE1234F',
+        mpin: '1234',
       );
 
       final success = result['success'] as bool;

@@ -197,7 +197,7 @@ class BackendApiService {
       body: {
         'phone': phone,
         'email': email,
-        'password': password,
+        'password': password, // Backend expects 'password' field for MPIN
         'name': name,
         'address': address,
         'panCard': panCard,
@@ -236,7 +236,7 @@ class BackendApiService {
       endpoint: ApiConfig.authLogin,
       body: {
         'phone': phone,
-        'password': password,
+        'password': password, // Backend expects 'password' field for MPIN
       },
     );
 

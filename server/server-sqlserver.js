@@ -408,12 +408,47 @@ app.get('/health', async (req, res) => {
  *               $ref: '#/components/schemas/ApiResponse'
  */
 app.post('/api/auth/register', [
-  body('phone').isMobilePhone('en-IN').withMessage('Invalid phone number'),
-  body('email').isEmail().withMessage('Invalid email address'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('name').isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
-  body('address').isLength({ min: 10 }).withMessage('Address must be at least 10 characters'),
-  body('panCard').matches(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/).withMessage('Invalid PAN card format')
+  body('phone')
+    .isMobilePhone('en-IN')
+    .withMessage('Invalid phone number')
+    .matches(/^[6-9][0-9]{9}$/)
+    .withMessage('Phone number must start with 6-9 and be 10 digits'),
+  body('email')
+    .isEmail()
+    .withMessage('Invalid email address')
+    .normalizeEmail(),
+  body('password')
+    .isLength({ min: 4, max: 4 })
+    .withMessage('MPIN must be exactly 4 digits')
+    .isNumeric()
+    .withMessage('MPIN must contain only numbers')
+    .custom((value) => {
+      // Check for weak MPIN patterns
+      if (/^(\d)\1{3}$/.test(value)) {
+        throw new Error('MPIN cannot have all same digits (e.g., 1111)');
+      }
+      if (/^(0123|1234|2345|3456|4567|5678|6789|9876|8765|7654|6543|5432|4321|3210)$/.test(value)) {
+        throw new Error('MPIN cannot be sequential numbers');
+      }
+      if (['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999'].includes(value)) {
+        throw new Error('MPIN is too common, please choose a different one');
+      }
+      return true;
+    }),
+  body('name')
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Name must be between 2 and 100 characters')
+    .matches(/^[a-zA-Z\s\.]+$/)
+    .withMessage('Name can only contain letters, spaces, and dots')
+    .trim(),
+  body('address')
+    .isLength({ min: 10, max: 500 })
+    .withMessage('Address must be between 10 and 500 characters')
+    .trim(),
+  body('panCard')
+    .matches(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/)
+    .withMessage('Invalid PAN card format (e.g., ABCDE1234F)')
+    .toUpperCase()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -428,16 +463,27 @@ app.post('/api/auth/register', [
     const { phone, email, password, name, address, panCard, deviceId } = req.body;
     const pool = await poolPromise;
 
-    // Check if user already exists
+    // Check if user already exists with more specific error messages
     const existingUser = await pool.request()
       .input('phone', sql.NVarChar, phone)
       .input('email', sql.NVarChar, email)
-      .query('SELECT user_id FROM users WHERE phone = @phone OR email = @email');
+      .query('SELECT user_id, phone, email FROM users WHERE phone = @phone OR email = @email');
 
     if (existingUser.recordset.length > 0) {
+      const existing = existingUser.recordset[0];
+      let message = 'Registration failed: ';
+      if (existing.phone === phone && existing.email === email) {
+        message += 'Both phone number and email are already registered';
+      } else if (existing.phone === phone) {
+        message += 'Phone number is already registered';
+      } else {
+        message += 'Email address is already registered';
+      }
+
       return res.status(409).json({
         success: false,
-        message: 'User with this phone or email already exists'
+        message,
+        errorCode: 'USER_EXISTS'
       });
     }
 
@@ -456,7 +502,7 @@ app.post('/api/auth/register', [
         .input('passwordHash', sql.NVarChar, passwordHash)
         .input('name', sql.NVarChar, name)
         .query(`
-          INSERT INTO users (phone, email, password_hash, name, role)
+          INSERT INTO users (phone, email, mpin_hash, name, role)
           OUTPUT INSERTED.user_id
           VALUES (@phone, @email, @passwordHash, @name, 'customer')
         `);
@@ -506,9 +552,12 @@ app.post('/api/auth/register', [
           VALUES (@sessionId, @userId, @accessToken, @tokenHash, @deviceInfo, @ipAddress, @expiresAt)
         `);
 
+      // Log successful registration
+      console.log(`✅ User registered successfully: ${customerId} (${phone})`);
+
       res.status(201).json({
         success: true,
-        message: 'User registered successfully',
+        message: 'Registration completed successfully! Welcome to VMurugan Gold Trading.',
         data: {
           userId,
           customerId,
@@ -516,7 +565,14 @@ app.post('/api/auth/register', [
           email,
           name,
           accessToken,
-          refreshToken
+          refreshToken,
+          registrationDate: new Date().toISOString(),
+          nextSteps: [
+            'Your account is now active',
+            'You can start investing in digital gold',
+            'Explore our investment schemes',
+            'Track your portfolio in real-time'
+          ]
         }
       });
 
@@ -526,11 +582,29 @@ app.post('/api/auth/register', [
     }
 
   } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({
+    console.error('❌ Registration error:', error);
+
+    // Determine appropriate error message and status code
+    let statusCode = 500;
+    let message = 'Registration failed due to server error';
+    let errorCode = 'INTERNAL_ERROR';
+
+    if (error.message.includes('duplicate key') || error.message.includes('UNIQUE constraint')) {
+      statusCode = 409;
+      message = 'User with this phone number or email already exists';
+      errorCode = 'DUPLICATE_USER';
+    } else if (error.message.includes('validation')) {
+      statusCode = 400;
+      message = 'Invalid registration data provided';
+      errorCode = 'VALIDATION_ERROR';
+    }
+
+    res.status(statusCode).json({
       success: false,
-      message: 'Registration failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      message,
+      errorCode,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 });
@@ -606,8 +680,16 @@ app.post('/api/auth/register', [
  *               $ref: '#/components/schemas/ApiResponse'
  */
 app.post('/api/auth/login', [
-  body('phone').isMobilePhone('en-IN').withMessage('Invalid phone number'),
-  body('password').isLength({ min: 1 }).withMessage('Password is required')
+  body('phone')
+    .isMobilePhone('en-IN')
+    .withMessage('Invalid phone number')
+    .matches(/^[6-9][0-9]{9}$/)
+    .withMessage('Phone number must start with 6-9 and be 10 digits'),
+  body('password')
+    .isLength({ min: 4, max: 4 })
+    .withMessage('MPIN must be exactly 4 digits')
+    .isNumeric()
+    .withMessage('MPIN must contain only numbers')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -633,20 +715,34 @@ app.post('/api/auth/login', [
       `);
 
     if (result.recordset.length === 0) {
+      console.log(`❌ Login failed: User not found for phone ${phone}`);
       return res.status(401).json({
         success: false,
-        message: 'Invalid phone number or password'
+        message: 'Phone number not registered or account is inactive',
+        errorCode: 'USER_NOT_FOUND'
       });
     }
 
     const user = result.recordset[0];
 
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password_hash);
-    if (!isValidPassword) {
+    // Check if user account is active
+    if (!user.is_active) {
+      console.log(`❌ Login failed: Inactive account for phone ${phone}`);
       return res.status(401).json({
         success: false,
-        message: 'Invalid phone number or password'
+        message: 'Account is inactive. Please contact support.',
+        errorCode: 'ACCOUNT_INACTIVE'
+      });
+    }
+
+    // Verify MPIN
+    const isValidPassword = await bcrypt.compare(password, user.mpin_hash);
+    if (!isValidPassword) {
+      console.log(`❌ Login failed: Invalid MPIN for phone ${phone}`);
+      return res.status(401).json({
+        success: false,
+        message: 'Incorrect MPIN. Please try again.',
+        errorCode: 'INVALID_MPIN'
       });
     }
 
@@ -673,9 +769,12 @@ app.post('/api/auth/login', [
       .input('userId', sql.UniqueIdentifier, user.user_id)
       .query('UPDATE users SET last_login_at = GETUTCDATE() WHERE user_id = @userId');
 
+    // Log successful login
+    console.log(`✅ Login successful: ${user.customer_id || 'N/A'} (${phone})`);
+
     res.json({
       success: true,
-      message: 'Login successful',
+      message: 'Welcome back! Login successful.',
       data: {
         userId: user.user_id,
         customerId: user.customer_id,
@@ -684,16 +783,31 @@ app.post('/api/auth/login', [
         name: user.customer_name || user.name,
         role: user.role,
         accessToken,
-        refreshToken
+        refreshToken,
+        lastLogin: new Date().toISOString(),
+        sessionId
       }
     });
 
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({
+    console.error('❌ Login error:', error);
+
+    let statusCode = 500;
+    let message = 'Login failed due to server error';
+    let errorCode = 'INTERNAL_ERROR';
+
+    if (error.message.includes('connection') || error.message.includes('timeout')) {
+      statusCode = 503;
+      message = 'Service temporarily unavailable. Please try again.';
+      errorCode = 'SERVICE_UNAVAILABLE';
+    }
+
+    res.status(statusCode).json({
       success: false,
-      message: 'Login failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      message,
+      errorCode,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 });

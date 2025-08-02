@@ -55,6 +55,41 @@ class CustomerService {
     return prefs.getBool(_customerRegisteredKey) ?? false;
   }
 
+  // Login with phone and MPIN
+  static Future<Map<String, dynamic>> loginWithMPin({
+    required String phone,
+    required String mpin,
+  }) async {
+    try {
+      print('🔐 Attempting login with phone: $phone');
+      
+      final result = await ApiService.loginCustomer(
+        phone: phone,
+        mpin: mpin,
+      );
+      
+      if (result['success']) {
+        await saveLoginSession(phone);
+        return {
+          'success': true,
+          'message': 'Login successful',
+          'customer_data': result['customer'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': result['message'] ?? 'Invalid phone number or MPIN',
+        };
+      }
+    } catch (e) {
+      print('❌ Error during login: $e');
+      return {
+        'success': false,
+        'message': 'Login failed: $e',
+      };
+    }
+  }
+
   // Save login session
   static Future<void> saveLoginSession(String phone) async {
     print('💾 Saving login session for phone: $phone');
@@ -121,6 +156,7 @@ class CustomerService {
     required String email,
     required String address,
     required String panCard,
+    required String mpin,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -140,6 +176,7 @@ class CustomerService {
         email: email,
         address: address,
         panCard: panCard,
+        mpin: mpin,
         deviceId: deviceInfo['device_id'] ?? 'unknown',
       );
       print('📞 CustomerService: ApiService result - ${result['success']} - ${result['message']}');

@@ -7,7 +7,7 @@ CREATE TABLE users (
     user_id NVARCHAR(50) PRIMARY KEY,
     phone NVARCHAR(15) UNIQUE NOT NULL,
     email NVARCHAR(255) UNIQUE NOT NULL,
-    password_hash NVARCHAR(255) NOT NULL,
+    mpin_hash NVARCHAR(255) NOT NULL,
     role NVARCHAR(20) DEFAULT 'customer',
     is_active BIT DEFAULT 1,
     created_at DATETIME2 DEFAULT GETDATE(),
@@ -125,7 +125,7 @@ CREATE TABLE audit_log (
 );
 
 -- Insert default admin user
-INSERT INTO users (user_id, phone, email, password_hash, role, is_active)
+INSERT INTO users (user_id, phone, email, mpin_hash, role, is_active)
 VALUES ('ADMIN_001', '9999999999', 'admin@vmurugan.com', '$2b$10$rQZ8kHWKQVz7QGQrQZ8kHWKQVz7QGQrQZ8kHWKQVz7QGQrQZ8kHW', 'admin', 1);
 
 -- Insert default business settings
